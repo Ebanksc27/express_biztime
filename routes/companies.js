@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const slugify = require('slugify');
 
 // Returns a list of companies
 router.get('/', async (req, res, next) => {
@@ -14,33 +15,47 @@ router.get('/', async (req, res, next) => {
   });
   
 
-// Returns a single company along with its invoices
+// Returns a single company along with its invoices and industries
 router.get('/:code', async (req, res, next) => {
-    try {
-      const { code } = req.params;
-      const companyResult = await db.query('SELECT code, name, description FROM companies WHERE code = $1', [code]);
-  
-      if (companyResult.rows.length === 0) {
-        throw new ExpressError(`Cannot find company with code of ${code}`, 404);
-      }
-  
-      const invoicesResult = await db.query('SELECT id FROM invoices WHERE comp_code = $1', [code]);
-  
-      const company = companyResult.rows[0];
-      const invoices = invoicesResult.rows.map(inv => inv.id);
-  
-      company.invoices = invoices;
-  
-      res.json({ company });
-    } catch (err) {
-      return next(err);
+  try {
+    const { code } = req.params;
+    const companyResult = await db.query(
+      'SELECT code, name, description FROM companies WHERE code = $1', [code]
+    );
+
+    if (companyResult.rows.length === 0) {
+      throw new ExpressError(`Cannot find company with code of ${code}`, 404);
     }
-  });
+
+    // Query to get all invoices related to the company
+    const invoicesResult = await db.query(
+      'SELECT id FROM invoices WHERE comp_code = $1', [code]
+    );
+
+    // New query to get all industries related to the company
+    const industriesResult = await db.query(
+      `SELECT industry FROM industries 
+       JOIN company_industries ON industries.code = company_industries.industry_code 
+       WHERE company_code = $1`, 
+      [code]
+    );
+
+    const company = companyResult.rows[0];
+    company.invoices = invoicesResult.rows.map(inv => inv.id);
+    company.industries = industriesResult.rows.map(ind => ind.industry);
+
+    res.json({ company });
+  } catch (err) {
+    return next(err);
+  }
+});
 
 // Adds a new company
 router.post('/', async (req, res, next) => {
   try {
-    const { code, name, description } = req.body;
+    const { name, description } = req.body;
+    // Generate a slugified code from the company name
+    const code = slugify(name, { lower: true, strict: true });
     const result = await db.query(
       'INSERT INTO companies (code, name, description) VALUES ($1, $2, $3) RETURNING code, name, description',
       [code, name, description]

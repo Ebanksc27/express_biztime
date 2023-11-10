@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../db'); 
+const db = require('../db');
+const ExpressError = require('./expressError'); 
 
 // Return info on all invoices
 router.get('/', async (req, res, next) => {
@@ -66,15 +67,35 @@ router.post('/', async (req, res, next) => {
 router.put('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { amt } = req.body;
+    const { amt, paid } = req.body;
+    let paidDate = null;
+
+    // Check the current status of the invoice
+    const currentResult = await db.query('SELECT paid FROM invoices WHERE id = $1', [id]);
+    if (currentResult.rows.length === 0) {
+      throw new ExpressError("Invoice not found", 404);
+    }
+
+    const currentInvoice = currentResult.rows[0];
+
+    // Determine the paid_date based on the paid status
+    if (!currentInvoice.paid && paid) {
+      paidDate = new Date();
+    } else if (currentInvoice.paid && !paid) {
+      paidDate = null;
+    } else {
+      paidDate = currentInvoice.paid_date;
+    }
+
     const result = await db.query(`
       UPDATE invoices 
-      SET amt = $1 
-      WHERE id = $2 
-      RETURNING id, comp_code, amt, paid, add_date, paid_date`, [amt, id]);
+      SET amt = $1, paid = $2, paid_date = $3 
+      WHERE id = $4 
+      RETURNING id, comp_code, amt, paid, add_date, paid_date`, 
+      [amt, paid, paidDate, id]);
 
     if (result.rows.length === 0) {
-      return next(new ExpressError("Invoice not found", 404));
+      throw new ExpressError("Invoice not found", 404);
     }
 
     res.json({ invoice: result.rows[0] });
@@ -87,13 +108,10 @@ router.put('/:id', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const result = await db.query(`
-      DELETE FROM invoices 
-      WHERE id = $1 
-      RETURNING id`, [id]);
+    const result = await db.query('DELETE FROM invoices WHERE id = $1 RETURNING id', [id]);
 
     if (result.rows.length === 0) {
-      return next(new ExpressError("Invoice not found", 404));
+      throw new ExpressError("Invoice not found", 404);
     }
 
     res.json({ status: "deleted" });

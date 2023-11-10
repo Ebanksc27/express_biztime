@@ -1,17 +1,17 @@
 /** BizTime express application. */
 
 const express = require("express");
+const app = express();  // This needs to be defined before using app.use()
 const ExpressError = require("./expressError");
-const companyRoutes = require('./routes/companies'); // Import company routes
-
-const app = express();
+const companyRoutes = require('./routes/companies'); 
+const industryRoutes = require('./routes/industries'); 
 
 app.use(express.json()); // Middleware to parse JSON
 
-// Here you would add other middleware or route handlers if needed
-
 // Use the company routes with the base path '/companies'
 app.use('/companies', companyRoutes);
+// Use the industry routes with the base path '/industries'
+app.use('/industries', industryRoutes);
 
 /** 404 handler */
 app.use(function(req, res, next) {
